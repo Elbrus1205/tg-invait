@@ -11,6 +11,7 @@ COPY tsconfig.base.json ./
 RUN npm ci
 COPY apps/frontend apps/frontend
 RUN npm run build --workspace=@invait/frontend
+RUN npm prune --omit=dev
 
 FROM node:20-bookworm-slim
 WORKDIR /app
