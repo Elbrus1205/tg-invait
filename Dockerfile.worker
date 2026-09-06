@@ -7,6 +7,7 @@ COPY apps/telegram-worker/package*.json apps/telegram-worker/
 COPY packages packages
 COPY tsconfig.base.json ./
 RUN npm ci
+RUN npm run build --workspace=@invait/contracts
 COPY prisma prisma
 COPY apps/telegram-worker apps/telegram-worker
 RUN npx prisma generate --schema prisma/schema.prisma && npm run build --workspace=@invait/telegram-worker
@@ -14,6 +15,9 @@ RUN npx prisma generate --schema prisma/schema.prisma && npm run build --workspa
 FROM node:20-bookworm-slim
 WORKDIR /app
 ENV NODE_ENV=production
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl \
+  && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/apps/telegram-worker/dist ./apps/telegram-worker/dist
 COPY --from=build /app/apps/telegram-worker/package.json ./apps/telegram-worker/package.json
