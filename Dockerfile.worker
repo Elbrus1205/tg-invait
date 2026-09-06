@@ -21,6 +21,7 @@ RUN apt-get update \
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/apps/telegram-worker/dist ./apps/telegram-worker/dist
 COPY --from=build /app/apps/telegram-worker/package.json ./apps/telegram-worker/package.json
+COPY --from=build /app/packages/contracts ./packages/contracts
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/prisma ./prisma
 CMD ["node", "apps/telegram-worker/dist/runtime-entry.js"]
