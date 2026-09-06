@@ -1,0 +1,43 @@
+{
+  "name": "invait-tg",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A safety-first Telegram account management platform for owned accounts on a VDS.",
+  "license": "UNLICENSED",
+  "packageManager": "npm@11.6.0",
+  "engines": {
+    "node": ">=20.11.0",
+    "npm": ">=10.0.0"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:frontend": "npm run dev --workspace=@invait/frontend",
+    "dev:backend": "npm run dev --workspace=@invait/backend",
+    "dev:worker": "npm run dev --workspace=@invait/telegram-worker",
+    "db:generate": "prisma generate --schema prisma/schema.prisma",
+    "db:validate": "prisma validate --schema prisma/schema.prisma",
+    "db:migrate:dev": "prisma migrate dev --schema prisma/schema.prisma",
+    "db:studio": "prisma studio --schema prisma/schema.prisma",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest",
+    "build": "npm run build --workspaces --if-present",
+    "validate": "npm run typecheck && npm run lint && npm test"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@types/node": "^22.10.5",
+    "eslint": "^9.17.0",
+    "globals": "^15.14.0",
+    "prisma": "^6.19.0",
+    "supabase": "^2.116.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.0",
+    "vitest": "^3.0.5"
+  }
+}

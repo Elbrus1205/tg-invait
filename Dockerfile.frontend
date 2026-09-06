@@ -1,0 +1,23 @@
+FROM node:20-bookworm-slim AS build
+WORKDIR /app
+ARG NEXT_PUBLIC_API_URL=https://efootball-nexon.ru
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+COPY package*.json ./
+COPY apps/frontend/package*.json apps/frontend/
+COPY apps/backend/package*.json apps/backend/
+COPY apps/telegram-worker/package*.json apps/telegram-worker/
+COPY packages packages
+RUN npm ci
+COPY apps/frontend apps/frontend
+RUN npm run build --workspace=@invait/frontend
+
+FROM node:20-bookworm-slim
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/apps/frontend/.next ./apps/frontend/.next
+COPY --from=build /app/apps/frontend/public ./apps/frontend/public
+COPY --from=build /app/apps/frontend/package.json ./apps/frontend/package.json
+COPY --from=build /app/package.json ./package.json
+EXPOSE 3000
+CMD ["npm", "run", "start", "--workspace=@invait/frontend"]

@@ -1,0 +1,32 @@
+node_modules/
+.npm/
+.next/
+dist/
+build/
+coverage/
+.turbo/
+.tmp-next/
+*.tsbuildinfo
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+!.env.production.example
+
+# Runtime data must never be committed
+runtime/
+uploads/
+tmp/
+logs/
+backups/
+supabase/.temp/
+*.session
+*.session-journal
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+!.vscode/extensions.json

@@ -1,0 +1,665 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RoleName {
+  OWNER
+  ADMIN
+  OPERATOR
+  VIEWER
+}
+
+enum TelegramAccountStatus {
+  ONLINE
+  OFFLINE
+  CONNECTING
+  FLOOD_WAIT
+  UNAUTHORIZED
+  PROXY_ERROR
+  TELEGRAM_ERROR
+  DISABLED
+}
+
+enum ProxyProtocol {
+  SOCKS5
+  HTTP
+  HTTPS
+}
+
+enum ProxyStatus {
+  ONLINE
+  OFFLINE
+  TIMEOUT
+  AUTHENTICATION_ERROR
+  UNKNOWN
+  DISABLED
+}
+
+enum ChatType {
+  PRIVATE
+  GROUP
+  SUPERGROUP
+  CHANNEL
+}
+
+enum TaskStatus {
+  DRAFT
+  QUEUED
+  RUNNING
+  PAUSED
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum TaskType {
+  CONNECT_ACCOUNT
+  DISCONNECT_ACCOUNT
+  SEND_MESSAGE
+  LOAD_DIALOGS
+  LOAD_MESSAGES
+  LOAD_CONTACTS
+  CHANGE_PROXY
+  IMPORT_TDATA
+  PROCESS_TASK
+  PROCESS_INVITATION_ITEM
+  HEALTH_CHECK
+}
+
+enum TaskItemStatus {
+  PENDING
+  PROCESSING
+  INVITED
+  ALREADY_MEMBER
+  PRIVACY_RESTRICTED
+  NOT_FOUND
+  FLOOD_WAIT
+  FAILED
+  SKIPPED
+}
+
+enum WorkerStatus {
+  ONLINE
+  OFFLINE
+  DEGRADED
+}
+
+enum LogLevel {
+  INFO
+  WARNING
+  ERROR
+  CRITICAL
+}
+
+enum LogType {
+  ACCOUNT
+  TELEGRAM
+  PROXY
+  WORKER
+  TASK
+  INVITATION
+  AUTHENTICATION
+  SYSTEM
+}
+
+enum NotificationType {
+  ACCOUNT_DISCONNECTED
+  PROXY_OFFLINE
+  SESSION_EXPIRED
+  FLOOD_WAIT
+  WORKER_OFFLINE
+  TASK_FAILED
+  INVITATION_TASK_COMPLETED
+  DATABASE_ERROR
+  REDIS_ERROR
+}
+
+enum DelayMode {
+  FIXED
+  RANDOM_RANGE
+}
+
+model User {
+  id               String   @id @default(uuid()) @db.Uuid
+  email            String   @unique
+  name             String?
+  passwordHash     String
+  twoFactorEnabled Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  roles              UserRole[]
+  sessions           UserSession[]
+  passwordResetTokens PasswordResetToken[]
+  telegramAccounts   TelegramAccount[]
+  auditLogs          AuditLog[]
+  notifications      Notification[]
+  createdTasks       Task[]             @relation("TaskCreatedBy")
+  createdInvitations InvitationTask[]   @relation("InvitationTaskCreatedBy")
+  imports            InvitationImport[]
+}
+
+model Role {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      RoleName @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users       UserRole[]
+  permissions RolePermission[]
+}
+
+model Permission {
+  id          String   @id @default(uuid()) @db.Uuid
+  code        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  roles RolePermission[]
+}
+
+model UserRole {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  roleId    String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+  @@index([roleId])
+}
+
+model RolePermission {
+  id           String   @id @default(uuid()) @db.Uuid
+  roleId       String   @db.Uuid
+  permissionId String   @db.Uuid
+  createdAt    DateTime @default(now())
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@index([permissionId])
+}
+
+model UserSession {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model TelegramAccount {
+  id             String                @id @default(uuid()) @db.Uuid
+  ownerId        String?               @db.Uuid
+  telegramId     BigInt?               @unique
+  username       String?
+  phone          String?
+  firstName      String?
+  lastName       String?
+  avatarUrl      String?
+  status         TelegramAccountStatus @default(OFFLINE)
+  lastOnlineAt   DateTime?
+  lastActivityAt DateTime?
+  sessionStatus  String?
+  errorState     String?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  owner              User?                         @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  session            TelegramSession?
+  groupMembers       AccountGroupMember[]
+  proxyAssignment    AccountProxy?
+  chats              Chat[]
+  contacts           Contact[]
+  taskAccounts       TaskAccount[]
+  invitationAccounts InvitationTaskAccount[]
+  invitationSettings AccountInvitationSettings?
+  invitationStats    AccountInvitationDailyStats[]
+  logs               Log[]
+
+  @@index([ownerId])
+  @@index([status])
+  @@index([username])
+}
+
+model TelegramSession {
+  id                String   @id @default(uuid()) @db.Uuid
+  telegramAccountId String   @unique @db.Uuid
+  encryptedPayload  String
+  encryptionKeyId   String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  telegramAccount TelegramAccount @relation(fields: [telegramAccountId], references: [id], onDelete: Cascade)
+}
+
+model AccountGroup {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members AccountGroupMember[]
+}
+
+model AccountGroupMember {
+  id                String   @id @default(uuid()) @db.Uuid
+  accountGroupId    String   @db.Uuid
+  telegramAccountId String   @db.Uuid
+  createdAt         DateTime @default(now())
+
+  accountGroup    AccountGroup    @relation(fields: [accountGroupId], references: [id], onDelete: Cascade)
+  telegramAccount TelegramAccount @relation(fields: [telegramAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountGroupId, telegramAccountId])
+  @@index([telegramAccountId])
+}
+
+model Proxy {
+  id                String        @id @default(uuid()) @db.Uuid
+  name              String
+  host              String
+  port              Int
+  protocol          ProxyProtocol
+  encryptedUsername String?
+  encryptedPassword String?
+  country           String?
+  pingMs            Int?
+  status            ProxyStatus   @default(UNKNOWN)
+  lastCheckedAt     DateTime?
+  errorCode         String?
+  disabledAt        DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  groupMembers       ProxyGroupMember[]
+  accountAssignments AccountProxy[]
+  logs               Log[]
+
+  @@unique([host, port, protocol])
+  @@index([status])
+}
+
+model ProxyGroup {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members            ProxyGroupMember[]
+  accountAssignments AccountProxy[]
+}
+
+model ProxyGroupMember {
+  id           String   @id @default(uuid()) @db.Uuid
+  proxyGroupId String   @db.Uuid
+  proxyId      String   @db.Uuid
+  createdAt    DateTime @default(now())
+
+  proxyGroup ProxyGroup @relation(fields: [proxyGroupId], references: [id], onDelete: Cascade)
+  proxy      Proxy      @relation(fields: [proxyId], references: [id], onDelete: Cascade)
+
+  @@unique([proxyGroupId, proxyId])
+  @@index([proxyId])
+}
+
+model AccountProxy {
+  id                String   @id @default(uuid()) @db.Uuid
+  telegramAccountId String   @unique @db.Uuid
+  proxyId           String?  @db.Uuid
+  proxyGroupId      String?  @db.Uuid
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  telegramAccount TelegramAccount @relation(fields: [telegramAccountId], references: [id], onDelete: Cascade)
+  proxy           Proxy?          @relation(fields: [proxyId], references: [id], onDelete: SetNull)
+  proxyGroup      ProxyGroup?     @relation(fields: [proxyGroupId], references: [id], onDelete: SetNull)
+
+  @@index([proxyId])
+  @@index([proxyGroupId])
+}
+
+model Chat {
+  id                String    @id @default(uuid()) @db.Uuid
+  telegramAccountId String    @db.Uuid
+  telegramId        BigInt
+  type              ChatType
+  title             String?
+  username          String?
+  avatarUrl         String?
+  lastMessageAt     DateTime?
+  unreadCount       Int       @default(0)
+  muted             Boolean   @default(false)
+  pinned            Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  telegramAccount TelegramAccount @relation(fields: [telegramAccountId], references: [id], onDelete: Cascade)
+  messages        MessageCache[]
+
+  @@unique([telegramAccountId, telegramId])
+  @@index([telegramAccountId, type])
+}
+
+model MessageCache {
+  id         String    @id @default(uuid()) @db.Uuid
+  chatId     String    @db.Uuid
+  telegramId BigInt
+  senderId   BigInt?
+  body       String?
+  mediaType  String?
+  sentAt     DateTime
+  editedAt   DateTime?
+  replyToId  BigInt?
+  metadata   Json?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  @@unique([chatId, telegramId])
+  @@index([chatId, sentAt])
+}
+
+model Contact {
+  id                String   @id @default(uuid()) @db.Uuid
+  telegramAccountId String   @db.Uuid
+  telegramId        BigInt
+  firstName         String?
+  lastName          String?
+  username          String?
+  phone             String?
+  source            String?
+  notes             String?
+  tags              String[]
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  telegramAccount TelegramAccount @relation(fields: [telegramAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([telegramAccountId, telegramId])
+  @@index([telegramAccountId, username])
+}
+
+model Task {
+  id               String     @id @default(uuid()) @db.Uuid
+  createdById      String?    @db.Uuid
+  assignedWorkerId String?    @db.Uuid
+  name             String
+  type             TaskType
+  status           TaskStatus @default(DRAFT)
+  target           Json?
+  source           Json?
+  progress         Json?
+  error            String?
+  startedAt        DateTime?
+  completedAt      DateTime?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  createdBy User?         @relation("TaskCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  worker    Worker?       @relation(fields: [assignedWorkerId], references: [id], onDelete: SetNull)
+  accounts  TaskAccount[]
+  items     TaskItem[]
+  logs      Log[]
+
+  @@index([status])
+  @@index([assignedWorkerId, status])
+}
+
+model TaskAccount {
+  id                String   @id @default(uuid()) @db.Uuid
+  taskId            String   @db.Uuid
+  telegramAccountId String   @db.Uuid
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  task            Task            @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  telegramAccount TelegramAccount @relation(fields: [telegramAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, telegramAccountId])
+  @@index([telegramAccountId])
+}
+
+model TaskItem {
+  id          String         @id @default(uuid()) @db.Uuid
+  taskId      String         @db.Uuid
+  status      TaskItemStatus @default(PENDING)
+  payload     Json
+  result      Json?
+  error       String?
+  processedAt DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, status])
+}
+
+model InvitationTask {
+  id          String     @id @default(uuid()) @db.Uuid
+  createdById String?    @db.Uuid
+  name        String
+  status      TaskStatus @default(DRAFT)
+  target      Json
+  scheduleAt  DateTime?
+  notes       String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  createdBy User?                   @relation("InvitationTaskCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  accounts  InvitationTaskAccount[]
+  users     InvitationUser[]
+  imports   InvitationImport[]
+
+  @@index([status])
+}
+
+model InvitationTaskAccount {
+  id                String   @id @default(uuid()) @db.Uuid
+  invitationTaskId  String   @db.Uuid
+  telegramAccountId String   @db.Uuid
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  invitationTask  InvitationTask  @relation(fields: [invitationTaskId], references: [id], onDelete: Cascade)
+  telegramAccount TelegramAccount @relation(fields: [telegramAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([invitationTaskId, telegramAccountId])
+  @@index([telegramAccountId])
+}
+
+model InvitationUser {
+  id               String         @id @default(uuid()) @db.Uuid
+  invitationTaskId String         @db.Uuid
+  username         String?
+  telegramId       BigInt?
+  accessHash       String?
+  firstName        String?
+  lastName         String?
+  note             String?
+  tag              String?
+  source           String?
+  status           TaskItemStatus @default(PENDING)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  invitationTask InvitationTask @relation(fields: [invitationTaskId], references: [id], onDelete: Cascade)
+
+  @@index([invitationTaskId, status])
+  @@index([username])
+}
+
+model InvitationImport {
+  id               String   @id @default(uuid()) @db.Uuid
+  invitationTaskId String?  @db.Uuid
+  uploadedById     String?  @db.Uuid
+  filename         String
+  totalRows        Int
+  validRows        Int
+  invalidRows      Int
+  duplicateRows    Int
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  invitationTask InvitationTask? @relation(fields: [invitationTaskId], references: [id], onDelete: SetNull)
+  uploadedBy     User?           @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@index([invitationTaskId])
+  @@index([uploadedById, createdAt])
+}
+
+model Worker {
+  id            String       @id @default(uuid()) @db.Uuid
+  name          String       @unique
+  status        WorkerStatus @default(OFFLINE)
+  lastHeartbeat DateTime?
+  version       String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  tasks Task[]
+  logs  Log[]
+
+  @@index([status, lastHeartbeat])
+}
+
+model Log {
+  id                String   @id @default(uuid()) @db.Uuid
+  type              LogType
+  level             LogLevel
+  telegramAccountId String?  @db.Uuid
+  proxyId           String?  @db.Uuid
+  workerId          String?  @db.Uuid
+  taskId            String?  @db.Uuid
+  action            String
+  description       String
+  errorCode         String?
+  metadata          Json?
+  createdAt         DateTime @default(now())
+
+  telegramAccount TelegramAccount? @relation(fields: [telegramAccountId], references: [id], onDelete: SetNull)
+  proxy           Proxy?           @relation(fields: [proxyId], references: [id], onDelete: SetNull)
+  worker          Worker?          @relation(fields: [workerId], references: [id], onDelete: SetNull)
+  task            Task?            @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([type, level, createdAt])
+  @@index([telegramAccountId, createdAt])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  actorId   String?  @db.Uuid
+  role      String?
+  ipAddress String?
+  action    String
+  entity    String
+  entityId  String?
+  before    Json?
+  after     Json?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([entity, entityId, createdAt])
+  @@index([actorId, createdAt])
+}
+
+model Notification {
+  id        String           @id @default(uuid()) @db.Uuid
+  userId    String?          @db.Uuid
+  type      NotificationType
+  message   String
+  readAt    DateTime?
+  metadata  Json?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, readAt])
+}
+
+model SystemSetting {
+  id        String   @id @default(uuid()) @db.Uuid
+  key       String   @unique
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AccountInvitationSettings {
+  id                 String    @id @default(uuid()) @db.Uuid
+  telegramAccountId  String    @unique @db.Uuid
+  invitationsEnabled Boolean   @default(false)
+  dailyLimit         Int
+  taskLimit          Int
+  delayMode          DelayMode @default(FIXED)
+  fixedDelaySeconds  Int?
+  minDelaySeconds    Int?
+  maxDelaySeconds    Int?
+  scheduleEnabled    Boolean   @default(false)
+  scheduleStart      String?
+  scheduleEnd        String?
+  activeDays         Int[]
+  pausedUntil        DateTime?
+  floodWaitUntil     DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  telegramAccount TelegramAccount @relation(fields: [telegramAccountId], references: [id], onDelete: Cascade)
+
+  @@index([floodWaitUntil])
+}
+
+model AccountInvitationDailyStats {
+  id                String   @id @default(uuid()) @db.Uuid
+  telegramAccountId String   @db.Uuid
+  date              DateTime @db.Date
+  attempted         Int      @default(0)
+  invited           Int      @default(0)
+  alreadyMember     Int      @default(0)
+  privacyRestricted Int      @default(0)
+  notFound          Int      @default(0)
+  failed            Int      @default(0)
+  floodWait         Int      @default(0)
+  skipped           Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  telegramAccount TelegramAccount @relation(fields: [telegramAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([telegramAccountId, date])
+  @@index([telegramAccountId])
+}

@@ -1,0 +1,2215 @@
+ПОЛНЫЙ ПРОМПТ ДЛЯ СОЗДАНИЯ TELEGRAM-ПАНЕЛИ НА VDS
+
+Создай полноценную production-ready веб-платформу для управления Telegram-аккаунтами на собственном VDS-сервере.
+
+Проект должен напоминать по логике панели управления сервисы уровня TG Ninja, но не копировать их дизайн или закрытые механизмы. Платформа должна работать только с Telegram-аккаунтами, которыми пользователь владеет или имеет право управлять, и не должна обходить ограничения, антиспам, FloodWait или другие защитные механизмы Telegram.
+
+Главная идея:
+VDS
+↓
+Web Panel
+↓
+Backend API
+↓
+PostgreSQL + Redis/BullMQ
+↓
+Telegram Workers
+↓
+Telegram Accounts
+↓
+Individual Proxy
+
+Администратор должен иметь возможность:
+- добавлять Telegram-аккаунты;
+- импортировать собственные TData;
+- назначать аккаунтам прокси;
+- управлять прокси через общий Proxy Manager;
+- читать разрешённые переписки аккаунтов;
+- отправлять сообщения из панели;
+- видеть логи;
+- видеть состояние аккаунтов;
+- создавать задачи;
+- загружать Excel/CSV со списками пользователей для разрешённых приглашений;
+- распределять задачи между аккаунтами;
+- видеть статистику работы каждого аккаунта;
+- управлять всем через удобную адаптивную веб-панель.
+
+==================================================
+1. ТЕХНОЛОГИИ
+==================================================
+
+Использовать:
+
+Backend:
+- Node.js
+- TypeScript
+
+Frontend:
+- Next.js
+- TypeScript
+- Tailwind CSS
+
+Telegram:
+- GramJS
+- Telegram MTProto API
+
+Database:
+- PostgreSQL
+- Prisma ORM
+
+Queues:
+- Redis
+- BullMQ
+
+Realtime:
+- Socket.IO или native WebSocket
+
+Security:
+- JWT + Refresh Tokens
+- Argon2
+- AES-256-GCM
+
+Infrastructure:
+- Ubuntu 24.04 LTS
+- Docker
+- Docker Compose
+- Nginx
+- Let's Encrypt
+- PM2 только если он действительно нужен
+
+Logs:
+- Pino или Winston
+
+Validation:
+- Zod
+
+API Documentation:
+- Swagger / OpenAPI
+
+Monitoring:
+- Prometheus + Grafana как дополнительный Docker Compose profile
+
+Проект должен запускаться на обычном VDS через Docker Compose.
+
+==================================================
+2. АРХИТЕКТУРА
+==================================================
+
+Разделить приложение минимум на:
+
+1. frontend
+2. backend
+3. telegram-worker
+4. postgres
+5. redis
+6. nginx
+
+Telegram workers должны работать отдельно от HTTP backend.
+
+HTTP backend не должен выполнять долгие Telegram-задачи внутри HTTP request.
+
+Backend:
+- принимает команды;
+- валидирует данные;
+- записывает задачи в базу;
+- отправляет их в Redis/BullMQ.
+
+Worker:
+- получает задачи;
+- работает с Telegram;
+- возвращает результаты;
+- пишет логи;
+- обновляет состояние.
+
+Архитектура должна позволять подключить несколько VDS с workers в будущем.
+
+==================================================
+3. АВТОРИЗАЦИЯ НА САЙТЕ
+==================================================
+
+Создать:
+
+- Login
+- Registration
+- Forgot Password
+- Reset Password
+- Refresh Token
+- Logout
+- Session Management
+- 2FA для администратора
+- история авторизаций
+
+Роли:
+
+- Owner
+- Admin
+- Operator
+- Viewer
+
+Сделать RBAC.
+
+Owner:
+полный доступ.
+
+Admin:
+управление аккаунтами, прокси, задачами, логами.
+
+Operator:
+работа с аккаунтами и задачами в пределах выданных прав.
+
+Viewer:
+только просмотр.
+
+==================================================
+4. DASHBOARD
+==================================================
+
+Главная страница должна показывать:
+
+- Total Telegram Accounts
+- Online
+- Offline
+- Connecting
+- FloodWait
+- Unauthorized
+- Proxy Errors
+- Telegram Errors
+- Disabled
+- Active Tasks
+- Failed Tasks
+- Messages Today
+- Active Workers
+- Redis Status
+- PostgreSQL Status
+- CPU
+- RAM
+- Disk
+
+Дополнительно:
+
+- последние события;
+- последние ошибки;
+- график активности;
+- статистику за:
+  - today
+  - 7 days
+  - 30 days
+
+Обновлять данные через WebSocket без перезагрузки.
+
+==================================================
+5. TELEGRAM ACCOUNTS
+==================================================
+
+Раздел:
+
+Telegram → Accounts
+
+Поддержать:
+
+- Table View
+- Card View
+
+Для каждого аккаунта показывать:
+
+- avatar;
+- name;
+- username;
+- Telegram ID;
+- phone в маскированном виде;
+- status;
+- proxy;
+- worker;
+- last online;
+- last activity;
+- session status;
+- chats count;
+- errors count;
+- created at.
+
+Статусы:
+
+- Online
+- Offline
+- Connecting
+- FloodWait
+- Unauthorized
+- Proxy Error
+- Telegram Error
+- Disabled
+
+Фильтры:
+
+- status;
+- proxy;
+- worker;
+- account group;
+- has errors;
+- no proxy.
+
+Поиск:
+
+- username;
+- phone;
+- Telegram ID;
+- internal ID.
+
+==================================================
+6. ДОБАВЛЕНИЕ TELEGRAM АККАУНТА
+==================================================
+
+Поддержать два способа.
+
+СПОСОБ 1:
+Обычная авторизация.
+
+Поля:
+
+- phone number;
+- proxy;
+- account group.
+
+Далее:
+
+1. Telegram отправляет code.
+2. Пользователь вводит code.
+3. Если включена 2FA — вводит пароль.
+4. Система создаёт session.
+5. Получает профиль.
+6. Сохраняет session в зашифрованном виде.
+7. Запускает worker.
+
+СПОСОБ 2:
+Import TData.
+
+==================================================
+7. TDATA IMPORT
+==================================================
+
+Создать страницу:
+
+Telegram → Import TData
+
+Поддержать загрузку:
+
+- ZIP;
+- папки/архива с TData, если frontend/runtime позволяет.
+
+Логика:
+
+1. принять файл;
+2. проверить формат;
+3. распаковать во временную директорию;
+4. проверить структуру Telegram Desktop TData;
+5. попытаться определить аккаунт;
+6. если технически возможно, конвертировать TData в Telegram session, совместимую с используемой библиотекой;
+7. проверить авторизацию;
+8. получить:
+   - Telegram ID;
+   - username;
+   - phone;
+   - first_name;
+   - last_name;
+   - avatar;
+9. сохранить новую Telegram session;
+10. удалить временные файлы;
+11. удалить исходный ZIP после успешной обработки.
+
+Важно:
+
+- TData не должна сохраняться в открытом виде;
+- не выводить содержимое TData в логах;
+- не делать публичных ссылок на TData;
+- временная директория не должна быть доступна через Nginx;
+- session хранить зашифрованно;
+- при ошибке показывать понятное сообщение.
+
+Поддержать массовый импорт нескольких TData.
+
+==================================================
+8. PROXY MANAGER
+==================================================
+
+Раздел:
+
+Telegram → Proxies
+
+Поддержать:
+
+- SOCKS5
+- HTTP
+- HTTPS
+
+MTProxy добавлять только если используемая библиотека корректно поддерживает его для нужного сценария.
+
+Для proxy хранить:
+
+- id;
+- name;
+- host;
+- port;
+- protocol;
+- username;
+- password;
+- country;
+- ping;
+- status;
+- last check;
+- error;
+- created at.
+
+Форматы импорта:
+
+ip:port
+
+login:password@ip:port
+
+ip:port:login:password
+
+Добавить массовую вставку текстом.
+
+Кнопки:
+
+- Add
+- Import
+- Test
+- Test All
+- Edit
+- Disable
+- Delete
+
+Статусы:
+
+- Online
+- Offline
+- Timeout
+- Authentication Error
+- Unknown
+
+==================================================
+9. НАЗНАЧЕНИЕ ПРОКСИ АККАУНТАМ
+==================================================
+
+При добавлении Telegram аккаунта добавить обязательный выбор:
+
+Proxy:
+- конкретный proxy;
+- No Proxy.
+
+В списке показывать:
+
+Germany #1 — 48 ms
+Netherlands #2 — 63 ms
+Proxy #3 — Offline
+
+После добавления аккаунта proxy можно менять.
+
+При смене proxy:
+
+1. корректно остановить Telegram connection;
+2. сохранить новое назначение;
+3. переподключить аккаунт;
+4. записать событие в Audit Log.
+
+==================================================
+10. PROXY GROUPS / POOLS
+==================================================
+
+Создать Proxy Groups.
+
+Примеры:
+
+- Germany
+- Netherlands
+- Mobile
+- Residential
+- Backup
+
+Proxy можно добавить в одну или несколько групп.
+
+Аккаунту можно назначить:
+
+- конкретный proxy;
+- proxy group.
+
+Если выбран pool/group, система может назначить доступный proxy по обычной балансировке соединений.
+
+Не реализовывать автоматическую ротацию прокси с целью обхода ограничений Telegram.
+
+==================================================
+11. ACCOUNT GROUPS
+==================================================
+
+Раздел:
+
+Telegram → Account Groups
+
+Примеры:
+
+- Main
+- Support
+- Operators
+- Test
+- Reserve
+
+Аккаунт может находиться в одной или нескольких логических группах.
+
+==================================================
+12. BULK ACTIONS
+==================================================
+
+Поддержать выбор нескольких аккаунтов.
+
+Действия:
+
+- Connect
+- Disconnect
+- Assign Proxy
+- Assign Proxy Group
+- Move/Add to Account Group
+- Pause
+- Enable
+- Disable
+
+==================================================
+13. ACCOUNT DETAILS
+==================================================
+
+Страница:
+
+/accounts/:id
+
+Вкладки:
+
+- Overview
+- Chats
+- Activity
+- Proxy
+- Tasks
+- Logs
+- Settings
+
+Overview:
+
+- Avatar
+- Name
+- Username
+- Telegram ID
+- Phone
+- Session
+- Proxy
+- Worker
+- Connection
+- Last Activity
+- Created At
+- Error State
+
+==================================================
+14. TELEGRAM CHATS
+==================================================
+
+Раздел:
+
+Telegram → Chats
+
+После выбора аккаунта показывать доступные диалоги.
+
+Категории:
+
+- Private
+- Groups
+- Supergroups
+- Channels
+
+Для каждого:
+
+- avatar;
+- title;
+- username;
+- Telegram ID;
+- type;
+- last message;
+- message time;
+- unread count;
+- muted;
+- pinned.
+
+==================================================
+15. ПРОСМОТР ПЕРЕПИСКИ
+==================================================
+
+Сделать интерфейс похожий по удобству на обычный мессенджер.
+
+Слева:
+список диалогов.
+
+Справа:
+открытый чат.
+
+Показывать:
+
+- text;
+- date/time;
+- sender;
+- reply;
+- photo;
+- document;
+- voice;
+- video;
+- stickers;
+- reactions, если API позволяет;
+- forwarded messages;
+- edited status.
+
+Использовать lazy loading / pagination.
+
+Не загружать всю историю сразу.
+
+==================================================
+16. ОТПРАВКА СООБЩЕНИЙ
+==================================================
+
+Из панели разрешить оператору отправлять сообщения от подключенного аккаунта в разрешённые диалоги.
+
+Поддержать:
+
+- Text
+- Reply
+- Emoji
+- Photo
+- Document
+
+Перед отправкой проверять:
+
+- session;
+- connection;
+- proxy;
+- account status;
+- Telegram permissions.
+
+Корректно обрабатывать:
+
+- FLOOD_WAIT
+- PEER_FLOOD
+- USER_PRIVACY_RESTRICTED
+- CHAT_WRITE_FORBIDDEN
+- SLOWMODE_WAIT
+- AUTH_KEY_UNREGISTERED
+- SESSION_REVOKED
+- RPC errors
+
+Никогда автоматически не обходить Telegram ограничения.
+
+==================================================
+17. REALTIME
+==================================================
+
+Использовать WebSocket.
+
+В реальном времени обновлять:
+
+- incoming messages;
+- outgoing messages;
+- account status;
+- connection state;
+- proxy status;
+- worker status;
+- task progress;
+- errors;
+- logs;
+- notifications.
+
+==================================================
+18. CONTACTS
+==================================================
+
+Раздел:
+
+Telegram → Contacts
+
+Для каждого контакта:
+
+- avatar;
+- first name;
+- last name;
+- username;
+- Telegram ID;
+- phone, если доступен;
+- source;
+- notes;
+- tags.
+
+Фильтры и поиск.
+
+==================================================
+19. TASKS
+==================================================
+
+Раздел:
+
+Tasks
+
+Задача содержит:
+
+- id;
+- name;
+- type;
+- accounts;
+- target;
+- source;
+- status;
+- created at;
+- started at;
+- completed at;
+- progress;
+- error;
+- logs.
+
+Статусы:
+
+- Draft
+- Queued
+- Running
+- Paused
+- Completed
+- Failed
+- Cancelled
+
+Использовать BullMQ.
+
+После перезапуска VDS незавершённые задачи не должны теряться.
+
+==================================================
+20. INVITATIONS MANAGER
+==================================================
+
+Создать отдельный раздел:
+
+Telegram → Invitations
+
+Этот модуль предназначен только для разрешённых приглашений пользователей, которых владелец системы имеет право приглашать.
+
+Не реализовывать обход антиспама, FloodWait, privacy settings или других ограничений Telegram.
+
+Кнопка:
+
++ New Invitation Task
+
+Поля:
+
+- task name;
+- target Telegram group/chat;
+- selected Telegram accounts;
+- account groups;
+- source users;
+- schedule/start time;
+- distribution mode;
+- notes.
+
+==================================================
+21. ИСТОЧНИКИ ПОЛЬЗОВАТЕЛЕЙ ДЛЯ INVITATIONS
+==================================================
+
+Поддержать:
+
+Excel:
+- .xlsx
+- .xls
+
+CSV:
+- .csv
+
+Минимальная колонка:
+
+username
+
+Дополнительные:
+
+- telegram_id
+- access_hash
+- first_name
+- last_name
+- note
+- tag
+- source
+
+Пример:
+
+username
+user_one
+user_two
+user_three
+
+После загрузки:
+
+- проверить файл;
+- определить колонки;
+- нормализовать username;
+- удалить @ в начале;
+- удалить пустые строки;
+- удалить дубликаты;
+- проверить формат;
+- показать количество valid;
+- показать invalid;
+- показать duplicates;
+- дать скачать отчёт по ошибочным строкам.
+
+==================================================
+22. IMPORT PREVIEW
+==================================================
+
+Перед запуском задачи показывать:
+
+Filename
+Rows
+Valid
+Invalid
+Duplicates
+
+И далее:
+
+Users: 1000
+Accounts: 10
+Target chat: My Community
+
+Distribution:
+
+Account #1 — 100
+Account #2 — 100
+Account #3 — 100
+...
+
+Добавить возможность:
+
+- исключить пользователя;
+- исключить аккаунт;
+- изменить target;
+- изменить распределение;
+- сохранить задачу как Draft.
+
+==================================================
+23. РАСПРЕДЕЛЕНИЕ INVITATION TASK
+==================================================
+
+Использовать BullMQ.
+
+Система распределяет разрешённый список между выбранными Telegram-аккаунтами.
+
+Один пользователь не должен одновременно обрабатываться несколькими workers.
+
+Использовать Redis distributed lock.
+
+Статусы записи:
+
+- Pending
+- Processing
+- Invited
+- Already Member
+- Privacy Restricted
+- Not Found
+- FloodWait
+- Failed
+- Skipped
+
+==================================================
+24. TELEGRAM LIMITS ДЛЯ INVITATIONS
+==================================================
+
+Строго обрабатывать:
+
+- FLOOD_WAIT
+- PEER_FLOOD
+- USER_PRIVACY_RESTRICTED
+- USER_NOT_MUTUAL_CONTACT
+- USER_ALREADY_PARTICIPANT
+- USERNAME_NOT_OCCUPIED
+- CHAT_ADMIN_REQUIRED
+- CHANNEL_PRIVATE
+- USER_CHANNELS_TOO_MUCH
+- CHAT_WRITE_FORBIDDEN
+- RPC errors
+
+При FLOOD_WAIT:
+
+1. получить Telegram wait time;
+2. сохранить wait until;
+3. поставить аккаунт/задачу на паузу в рамках этого аккаунта;
+4. продолжить только после разрешённого Telegram времени.
+
+Не переключать автоматически на другой аккаунт специально для обхода ограничения.
+
+==================================================
+25. INVITATION PROGRESS
+==================================================
+
+Показывать realtime статистику:
+
+- Total
+- Pending
+- Processing
+- Invited
+- Already Member
+- Privacy Restricted
+- Not Found
+- Failed
+- Skipped
+
+Также:
+
+- Accounts Active
+- Accounts Paused
+- Accounts FloodWait
+- Task Speed
+- Current Worker
+
+==================================================
+26. СТАТИСТИКА АККАУНТОВ В INVITATION TASK
+==================================================
+
+Для каждого аккаунта показывать:
+
+- Processed
+- Invited
+- Already Member
+- Privacy Restricted
+- Not Found
+- Failed
+- FloodWait
+- Current Status
+- Current Item
+
+Пример:
+
+Account #12
+
+Processed: 73
+Invited: 42
+Privacy Restricted: 19
+Already Member: 8
+Failed: 4
+
+==================================================
+27. INVITATION LOGS
+==================================================
+
+Каждая попытка должна попадать в logs.
+
+Пример:
+
+Date:
+2026-08-15 17:20:32
+
+Account:
+@my_account
+
+Target:
+My Community
+
+User:
+@user_one
+
+Result:
+INVITED
+
+Другой пример:
+
+Account:
+@my_account2
+
+User:
+@user_two
+
+Result:
+USER_PRIVACY_RESTRICTED
+
+==================================================
+28. PAUSE / RESUME / CANCEL
+==================================================
+
+У задач:
+
+- Pause
+- Resume
+- Cancel
+- Retry Failed
+
+Retry Failed должен повторять только те записи, для которых повтор технически и политически допустим.
+
+Не повторять действия, если Telegram явно запретил их по privacy или другим постоянным ограничениям.
+
+==================================================
+29. IMPORT HISTORY
+==================================================
+
+Раздел:
+
+Invitations → Import History
+
+Показывать:
+
+- filename;
+- uploaded by;
+- date;
+- total rows;
+- valid;
+- invalid;
+- duplicates.
+
+После обработки исходный Excel/CSV можно удалять.
+
+В БД хранить нормализованные записи, если это требуется функционально.
+
+==================================================
+30. TARGET CHATS
+==================================================
+
+При создании invitation task показывать только доступные группы/чаты, которыми выбранный Telegram-аккаунт имеет право управлять или куда он имеет право приглашать.
+
+Показывать:
+
+- avatar;
+- title;
+- username;
+- Telegram ID;
+- permissions.
+
+Перед запуском проверять необходимые права.
+
+==================================================
+31. WORKER SYSTEM
+==================================================
+
+Workers:
+
+- telegram-worker-1
+- telegram-worker-2
+- telegram-worker-3
+- и т.д.
+
+Команды:
+
+- CONNECT_ACCOUNT
+- DISCONNECT_ACCOUNT
+- SEND_MESSAGE
+- LOAD_DIALOGS
+- LOAD_MESSAGES
+- CHANGE_PROXY
+- IMPORT_TDATA
+- PROCESS_TASK
+- PROCESS_INVITATION_ITEM
+- HEALTH_CHECK
+
+Worker должен отправлять heartbeat.
+
+Если worker offline:
+- задачи не терять;
+- переназначать только безопасным способом;
+- учитывать account lock.
+
+==================================================
+32. ACCOUNT LOCK
+==================================================
+
+Один Telegram аккаунт одновременно обслуживается только одним worker.
+
+Использовать Redis lock:
+
+telegram_account_lock:{accountId}
+
+Lock должен:
+
+- иметь TTL;
+- обновляться heartbeat;
+- корректно освобождаться;
+- защищать от двойного запуска session.
+
+==================================================
+33. SESSION STORAGE
+==================================================
+
+Telegram session хранить только в зашифрованном виде.
+
+Использовать:
+
+AES-256-GCM
+
+ENV:
+
+TELEGRAM_SESSION_ENCRYPTION_KEY=
+
+Session:
+- не возвращать во frontend;
+- не выводить в logs;
+- не показывать через API;
+- не включать в обычные exports.
+
+==================================================
+34. SECURITY
+==================================================
+
+Обязательно:
+
+- HTTPS
+- CSRF protection
+- Rate limiting
+- Helmet
+- CSP
+- XSS protection
+- SQL injection protection
+- Zod validation
+- Secure cookies
+- HttpOnly
+- SameSite
+- Argon2
+- JWT rotation
+- Refresh token revocation
+- brute-force protection
+- audit logs
+
+Secrets только через ENV.
+
+Не хранить в GitHub:
+
+- API_ID
+- API_HASH
+- DB_PASSWORD
+- JWT_SECRET
+- REFRESH_SECRET
+- SESSION_ENCRYPTION_KEY
+- proxy passwords
+
+==================================================
+35. AUDIT LOG
+==================================================
+
+Immutable Audit Log.
+
+Хранить:
+
+- who;
+- role;
+- date;
+- IP;
+- action;
+- entity;
+- entity ID;
+- before;
+- after;
+- metadata.
+
+Пример:
+
+Admin
+changed proxy
+Account #21
+Proxy #3 → Proxy #7
+
+==================================================
+36. SYSTEM LOGS
+==================================================
+
+Раздел:
+
+Logs
+
+Типы:
+
+- Account
+- Telegram
+- Proxy
+- Worker
+- Task
+- Invitation
+- Authentication
+- System
+
+Уровни:
+
+- INFO
+- WARNING
+- ERROR
+- CRITICAL
+
+Поля:
+
+- date;
+- level;
+- account;
+- action;
+- description;
+- error code;
+- worker;
+- proxy;
+- metadata.
+
+==================================================
+37. ACCOUNT ACTIVITY HISTORY
+==================================================
+
+Для каждого аккаунта показывать:
+
+- connected;
+- disconnected;
+- proxy changed;
+- message sent;
+- message received;
+- task started;
+- task paused;
+- task completed;
+- Telegram error;
+- FloodWait;
+- settings changed.
+
+==================================================
+38. NOTIFICATIONS
+==================================================
+
+Внутренние уведомления:
+
+- Account Disconnected
+- Proxy Offline
+- Session Expired
+- FloodWait
+- Worker Offline
+- Task Failed
+- Invitation Task Completed
+- Database Error
+- Redis Error
+
+Дополнительно предусмотреть Telegram Bot notifications для администратора.
+
+==================================================
+39. SETTINGS
+==================================================
+
+Раздел:
+
+Settings
+
+Подразделы:
+
+- General
+- Telegram
+- Proxy
+- Workers
+- Security
+- Notifications
+- Database
+- System
+
+==================================================
+40. TELEGRAM API SETTINGS
+==================================================
+
+Настройки:
+
+- API ID
+- API Hash
+
+После сохранения скрывать значения.
+
+Пример:
+
+API Hash:
+••••••••••••8fa2
+
+API Hash не возвращать полностью через frontend API после сохранения.
+
+==================================================
+41. ADMIN PANEL
+==================================================
+
+Admin должен видеть:
+
+- Users
+- Roles
+- Telegram Accounts
+- Account Groups
+- Proxies
+- Proxy Groups
+- Chats
+- Contacts
+- Tasks
+- Invitations
+- Workers
+- Logs
+- Audit Logs
+- Notifications
+- System
+- Settings
+
+==================================================
+42. UI / UX
+==================================================
+
+Сделать современный SaaS dashboard.
+
+Не копировать TG Ninja визуально.
+
+Требования:
+
+- minimal;
+- clean;
+- responsive;
+- desktop-first;
+- mobile support;
+- dark mode;
+- light mode;
+- компактные таблицы;
+- быстрые фильтры;
+- поиск;
+- modal windows;
+- toast notifications;
+- status badges;
+- realtime updates.
+
+Sidebar:
+
+Dashboard
+Accounts
+Chats
+Contacts
+Invitations
+Tasks
+Proxies
+Workers
+Logs
+Settings
+
+==================================================
+43. ACCOUNTS PAGE
+==================================================
+
+Пример:
+
+Telegram Accounts
+
+[ + Add Account ]
+
+Total: 35
+Online: 27
+Offline: 4
+Errors: 2
+FloodWait: 2
+
+Table:
+
+Account | Status | Proxy | Worker | Last Activity | Actions
+
+==================================================
+44. PROXIES PAGE
+==================================================
+
+Proxy Manager
+
+[ + Add Proxy ]
+[ Import ]
+[ Test All ]
+
+Table:
+
+Proxy | Protocol | Country | Ping | Accounts | Status | Last Check
+
+==================================================
+45. INVITATIONS PAGE
+==================================================
+
+Invitations
+
+[ + New Task ]
+
+Summary:
+
+Running
+Paused
+Completed
+Failed
+
+Table:
+
+Task
+Target
+Accounts
+Users
+Progress
+Invited
+Errors
+Status
+Started
+Actions
+
+==================================================
+46. DIAGNOSTICS
+==================================================
+
+Кнопка:
+
+Run Diagnostics
+
+Проверить:
+
+- Redis
+- PostgreSQL
+- Telegram API
+- Workers
+- Proxies
+- Disk
+- Memory
+- CPU
+- Nginx
+- SSL expiry
+
+==================================================
+47. MONITORING
+==================================================
+
+Показывать:
+
+- CPU
+- RAM
+- Disk
+- Redis queue
+- active workers
+- Telegram sessions
+- task throughput
+- API latency
+
+Prometheus + Grafana сделать optional profile.
+
+==================================================
+48. BACKUPS
+==================================================
+
+Автоматический backup PostgreSQL.
+
+Расписание:
+
+- Daily
+- Weekly
+
+Retention:
+
+- 7 days
+- 14 days
+- 30 days
+
+Не включать:
+
+- незашифрованные sessions;
+- TData;
+- временные upload-файлы.
+
+==================================================
+49. DOCKER
+==================================================
+
+Создать:
+
+docker-compose.yml
+
+Services:
+
+- frontend
+- backend
+- telegram-worker
+- postgres
+- redis
+- nginx
+
+Добавить:
+
+restart: unless-stopped
+
+Использовать Docker volumes для persistent data.
+
+==================================================
+50. ENV
+==================================================
+
+Создать:
+
+.env.example
+
+Пример:
+
+NODE_ENV=production
+
+DATABASE_URL=
+POSTGRES_DB=
+POSTGRES_USER=
+POSTGRES_PASSWORD=
+
+REDIS_URL=
+
+JWT_SECRET=
+JWT_REFRESH_SECRET=
+
+TELEGRAM_API_ID=
+TELEGRAM_API_HASH=
+TELEGRAM_SESSION_ENCRYPTION_KEY=
+
+DOMAIN=
+ADMIN_EMAIL=
+
+Никогда не добавлять настоящий .env в Git.
+
+==================================================
+51. VDS DEPLOYMENT
+==================================================
+
+Создать подробный production deployment guide для Ubuntu 24.04.
+
+Этапы:
+
+1. обновить систему;
+2. создать отдельного Linux пользователя;
+3. настроить SSH;
+4. отключить root password login;
+5. установить Docker;
+6. установить Docker Compose;
+7. настроить firewall;
+8. загрузить проект;
+9. создать .env;
+10. запустить PostgreSQL;
+11. запустить Redis;
+12. выполнить Prisma migrations;
+13. создать первого Owner;
+14. запустить backend;
+15. запустить telegram-worker;
+16. запустить frontend;
+17. запустить Nginx;
+18. настроить домен;
+19. получить SSL;
+20. включить restart policy;
+21. проверить logs;
+22. настроить backup;
+23. настроить monitoring.
+
+==================================================
+52. FIREWALL
+==================================================
+
+Открыть только:
+
+22 SSH
+80 HTTP
+443 HTTPS
+
+PostgreSQL:
+не публиковать наружу.
+
+Redis:
+не публиковать наружу.
+
+Backend internal port:
+желательно держать внутри Docker network.
+
+==================================================
+53. API
+==================================================
+
+REST API:
+
+/api/auth
+/api/users
+/api/accounts
+/api/account-groups
+/api/proxies
+/api/proxy-groups
+/api/chats
+/api/messages
+/api/contacts
+/api/tasks
+/api/invitations
+/api/workers
+/api/logs
+/api/audit
+/api/notifications
+/api/settings
+/api/system
+
+Документация:
+Swagger/OpenAPI.
+
+==================================================
+54. DATABASE
+==================================================
+
+Prisma models минимум:
+
+User
+Role
+Permission
+UserRole
+
+TelegramAccount
+TelegramSession
+AccountGroup
+AccountGroupMember
+
+Proxy
+ProxyGroup
+ProxyGroupMember
+AccountProxy
+
+Chat
+MessageCache
+Contact
+
+Task
+TaskAccount
+TaskItem
+
+InvitationTask
+InvitationTaskAccount
+InvitationUser
+InvitationImport
+
+Worker
+
+Log
+AuditLog
+Notification
+
+SystemSetting
+
+Использовать UUID.
+
+Добавлять:
+
+createdAt
+updatedAt
+
+где это нужно.
+
+==================================================
+55. ЧИСТАЯ СТРУКТУРА BACKEND
+==================================================
+
+Не писать всё в одном файле.
+
+Структура:
+
+src/
+  modules/
+  controllers/
+  services/
+  repositories/
+  workers/
+  queues/
+  telegram/
+  proxy/
+  validators/
+  middlewares/
+  security/
+  websocket/
+  config/
+  utils/
+  types/
+
+==================================================
+56. ЧИСТАЯ СТРУКТУРА FRONTEND
+==================================================
+
+Пример:
+
+src/
+  app/
+  components/
+  features/
+  hooks/
+  stores/
+  services/
+  types/
+  lib/
+  utils/
+
+==================================================
+57. TESTING
+==================================================
+
+Добавить:
+
+- unit tests;
+- integration tests;
+- API tests;
+- queue tests;
+- basic worker tests.
+
+Проверять:
+
+- auth;
+- RBAC;
+- proxy CRUD;
+- account CRUD;
+- task creation;
+- Redis locks;
+- session encryption;
+- invitation import parser;
+- duplicate filtering;
+- individual account invitation settings;
+- default invitation settings;
+- daily limit enforcement;
+- task limit enforcement;
+- FloodWait pause handling.
+
+==================================================
+58. ERROR HANDLING
+==================================================
+
+Создать единый error handler.
+
+Категории:
+
+- ValidationError
+- AuthError
+- PermissionError
+- TelegramError
+- ProxyError
+- WorkerError
+- QueueError
+- DatabaseError
+
+Frontend должен получать нормальные человекочитаемые ошибки.
+
+==================================================
+59. HEALTH CHECKS
+==================================================
+
+Endpoints:
+
+/health
+/health/ready
+/health/live
+
+Проверять:
+
+- backend;
+- postgres;
+- redis;
+- workers.
+
+==================================================
+60. ОБЯЗАТЕЛЬНЫЕ ПРАВИЛА TELEGRAM
+==================================================
+
+Не реализовывать:
+
+- обход FloodWait;
+- обход PeerFlood;
+- обход privacy settings;
+- автоматическую ротацию аккаунтов с целью обхода ограничений;
+- автоматическую ротацию proxy с целью обхода ограничений;
+- fingerprint spoofing;
+- антибан-механизмы;
+- скрытие массовой нежелательной активности;
+- принудительные приглашения пользователей, которых Telegram запрещает приглашать.
+
+Telegram errors являются ограничениями платформы и должны корректно обрабатываться.
+
+
+==================================================
+ДОПОЛНЕНИЕ: ИНДИВИДУАЛЬНЫЕ INVITATION SETTINGS ДЛЯ TELEGRAM ACCOUNTS
+==================================================
+
+Для каждого Telegram аккаунта создать отдельные настройки Invitations.
+
+Раздел:
+
+Telegram → Accounts → Account Details → Invitation Settings
+
+Каждый аккаунт должен иметь собственный Invitation Settings Profile.
+
+НАСТРОЙКИ ПО УМОЛЧАНИЮ:
+
+Создать глобальный раздел:
+
+Settings → Invitations → Default Invitation Settings
+
+Настройки по умолчанию автоматически применяются к новым Telegram аккаунтам при добавлении.
+
+При добавлении аккаунта система создаёт индивидуальную копию Default Invitation Settings.
+
+После этого настройки конкретного аккаунта можно изменять независимо от других аккаунтов.
+
+Изменение Default Invitation Settings не должно автоматически перезаписывать уже индивидуально настроенные аккаунты без явного подтверждения администратора.
+
+Добавить кнопку:
+
+Apply Default Settings
+
+для ручного применения текущих настроек по умолчанию к выбранному аккаунту.
+
+Также добавить:
+
+Reset to Default Settings
+
+для сброса индивидуальных настроек аккаунта к шаблону по умолчанию.
+
+==================================================
+INVITATION SETTINGS КОНКРЕТНОГО АККАУНТА
+==================================================
+
+Для каждого аккаунта должны быть доступны:
+
+GENERAL:
+
+- Invitations Enabled;
+- Invitations Disabled;
+- Account Invitation Status;
+- максимальное количество разрешённых приглашений за день;
+- максимальное количество разрешённых приглашений в рамках одной задачи;
+- количество успешно обработанных действий сегодня;
+- количество обработанных пользователей сегодня;
+- дата последнего Invitation действия;
+- текущий статус Invitation активности.
+
+SCHEDULING:
+
+- Enable Schedule;
+- время начала работы;
+- время окончания работы;
+- выбранные дни недели;
+- ручная пауза аккаунта;
+- Resume Time, если аккаунт поставлен на ручную паузу.
+
+PACING:
+
+- минимальная пауза между разрешёнными действиями;
+- максимальная пауза между разрешёнными действиями;
+- возможность указать фиксированную паузу;
+- режим:
+  - Fixed Delay;
+  - Random Delay within configured range.
+
+Случайная пауза должна использоваться только как настройка обычного темпа работы и не должна использоваться для обхода ограничений Telegram или сокрытия запрещённой активности.
+
+TASK LIMITS:
+
+- Maximum Invitations Per Day;
+- Maximum Actions Per Task;
+- Stop Account After Daily Limit;
+- Stop Account After Task Limit;
+- возможность полностью отключить Invitations для конкретного аккаунта.
+
+==================================================
+TELEGRAM ERROR HANDLING
+==================================================
+
+При получении Telegram ограничения или ошибки система должна корректно остановить соответствующее действие.
+
+Обрабатывать:
+
+- FLOOD_WAIT;
+- PEER_FLOOD;
+- USER_PRIVACY_RESTRICTED;
+- USER_NOT_MUTUAL_CONTACT;
+- USER_ALREADY_PARTICIPANT;
+- USERNAME_NOT_OCCUPIED;
+- CHAT_ADMIN_REQUIRED;
+- CHANNEL_PRIVATE;
+- USER_CHANNELS_TOO_MUCH;
+- CHAT_WRITE_FORBIDDEN;
+- RPC errors.
+
+При FLOOD_WAIT:
+
+1. получить официальное время ожидания Telegram;
+2. сохранить FloodWait Until;
+3. немедленно остановить Invitation действия данного аккаунта;
+4. показать аккаунт как FloodWait;
+5. не выполнять новые Invitation действия до окончания указанного Telegram времени;
+6. после окончания времени не запускать действия автоматически, если задача или аккаунт были вручную остановлены;
+7. записать событие в Account Activity History;
+8. отправить уведомление администратору.
+
+Не использовать другой аккаунт автоматически для обхода ограничения.
+
+При PEER_FLOOD или других ограничениях:
+
+- остановить соответствующее действие;
+- сохранить ошибку;
+- показать статус;
+- не выполнять автоматический обход ограничения;
+- не выполнять автоматическую смену аккаунта с целью продолжения запрещённой активности.
+
+==================================================
+ACCOUNT INVITATION STATISTICS
+==================================================
+
+В Account Details → Invitation Settings / Statistics показывать:
+
+Today:
+
+- Invitations Attempted;
+- Successfully Invited;
+- Already Member;
+- Privacy Restricted;
+- Not Found;
+- Failed;
+- FloodWait;
+- Skipped.
+
+Также:
+
+- Daily Limit;
+- Remaining Daily Capacity;
+- Task Limit;
+- Current Task Progress;
+- Last Invitation Activity;
+- FloodWait Until;
+- Account Invitation Status.
+
+==================================================
+ACCOUNT PAGE UI
+==================================================
+
+В разделе:
+
+Telegram → Accounts
+
+добавить колонки:
+
+Account
+Status
+Proxy
+Worker
+Invitations
+Today Processed
+Daily Limit
+FloodWait
+Last Activity
+Actions
+
+Для каждого аккаунта:
+
+Invitations:
+
+Enabled / Disabled
+
+Today:
+
+12 / 50
+
+FloodWait:
+
+None
+
+или:
+
+Until 18:45
+
+В Actions добавить:
+
+- Open Account;
+- Invitation Settings;
+- Pause Invitations;
+- Resume Invitations;
+- Disable Invitations;
+- Apply Default Settings.
+
+==================================================
+ACCOUNT DETAILS
+==================================================
+
+В Account Details добавить новую вкладку:
+
+Invitation Settings
+
+Структура страницы:
+
+GENERAL
+[ Invitations Enabled: ON ]
+
+LIMITS
+[ Daily Limit ]
+[ Per Task Limit ]
+
+PACING
+[ Fixed Delay / Random Delay ]
+[ Minimum Delay ]
+[ Maximum Delay ]
+
+SCHEDULE
+[ Enable Schedule ]
+[ Start Time ]
+[ End Time ]
+[ Days of Week ]
+
+STATUS
+Today Processed
+Today Successful
+Remaining Daily Capacity
+FloodWait Status
+Last Activity
+
+ACTIONS
+
+[ Save Settings ]
+[ Reset to Default Settings ]
+[ Pause Invitations ]
+[ Resume Invitations ]
+
+==================================================
+DEFAULT INVITATION SETTINGS
+==================================================
+
+Создать:
+
+Settings → Invitations
+
+Страница:
+
+Default Invitation Settings
+
+Поля:
+
+GENERAL
+- Invitations Enabled By Default;
+
+LIMITS
+- Default Daily Limit;
+- Default Task Limit;
+
+PACING
+- Default Delay Mode;
+- Default Fixed Delay;
+- Default Minimum Delay;
+- Default Maximum Delay;
+
+SCHEDULE
+- Schedule Enabled By Default;
+- Default Start Time;
+- Default End Time;
+- Default Active Days.
+
+Кнопки:
+
+[ Save Default Settings ]
+
+[ Apply To Selected Accounts ]
+
+При массовом применении настроек обязательно показывать:
+
+- список выбранных аккаунтов;
+- какие настройки будут изменены;
+- подтверждение администратора.
+
+==================================================
+ПРИОРИТЕТ НАСТРОЕК
+==================================================
+
+Использовать следующую логику:
+
+1. Telegram официальные ограничения и ошибки имеют наивысший приоритет.
+2. Индивидуальные Invitation Settings аккаунта имеют следующий приоритет.
+3. Default Invitation Settings используются только при создании нового аккаунта или ручном применении.
+4. Настройки конкретной Invitation Task могут дополнительно ограничивать работу, но не должны превышать индивидуальные ограничения аккаунта без явного изменения настроек аккаунта.
+5. Ни одна настройка панели не должна использоваться для обхода FloodWait, PeerFlood, privacy restrictions или других ограничений Telegram.
+
+==================================================
+DATABASE
+==================================================
+
+Добавить модели / поля для хранения Invitation Settings.
+
+Минимум:
+
+AccountInvitationSettings
+
+Поля:
+
+- id;
+- telegramAccountId;
+- invitationsEnabled;
+- dailyLimit;
+- taskLimit;
+- delayMode;
+- fixedDelay;
+- minDelay;
+- maxDelay;
+- scheduleEnabled;
+- scheduleStart;
+- scheduleEnd;
+- activeDays;
+- pausedUntil;
+- floodWaitUntil;
+- createdAt;
+- updatedAt.
+
+Также добавить:
+
+AccountInvitationDailyStats
+
+Поля:
+
+- id;
+- telegramAccountId;
+- date;
+- attempted;
+- invited;
+- alreadyMember;
+- privacyRestricted;
+- notFound;
+- failed;
+- floodWait;
+- skipped;
+- createdAt;
+- updatedAt.
+
+Использовать корректные индексы для:
+
+telegramAccountId
+date
+floodWaitUntil
+
+==================================================
+ОБЯЗАТЕЛЬНЫЕ ПРАВИЛА
+==================================================
+
+Настройки Invitations предназначены для управления разрешёнными действиями аккаунта и соблюдения ограничений Telegram.
+
+Не реализовывать:
+
+- обход FloodWait;
+- обход PeerFlood;
+- автоматическую смену аккаунта для обхода ограничения;
+- автоматическую смену proxy для обхода ограничения;
+- скрытие запрещённой массовой активности;
+- принудительное приглашение пользователей при наличии Telegram privacy restrictions.
+
+Все Telegram ограничения должны иметь приоритет над пользовательскими настройками панели.
+
+==================================================
+61. ПОРЯДОК РАЗРАБОТКИ
+==================================================
+
+Не пытайся создать весь проект в одном огромном ответе.
+
+Работай по этапам.
+
+Этап 1:
+архитектура и структура папок.
+
+Этап 2:
+Docker infrastructure.
+
+Этап 3:
+PostgreSQL + Prisma.
+
+Этап 4:
+Auth + RBAC.
+
+Этап 5:
+Proxy Manager.
+
+Этап 6:
+Telegram Account Manager.
+
+Этап 7:
+Telegram Worker.
+
+Этап 8:
+TData Import.
+
+Этап 9:
+Chats.
+
+Этап 10:
+Messages.
+
+Этап 11:
+Contacts.
+
+Этап 12:
+Tasks.
+
+Этап 13:
+Invitations + Excel/CSV Import + Individual Account Invitation Settings + Default Invitation Settings.
+
+Этап 14:
+Logs + Audit Logs.
+
+Этап 15:
+Admin Panel.
+
+Этап 16:
+Realtime/WebSocket.
+
+Этап 17:
+Monitoring.
+
+Этап 18:
+Security Audit.
+
+Этап 19:
+Testing.
+
+Этап 20:
+VDS Production Deployment.
+
+==================================================
+62. ПОСЛЕ КАЖДОГО ЭТАПА
+==================================================
+
+После каждого этапа обязательно:
+
+1. показать созданные/изменённые файлы;
+2. объяснить архитектурные решения;
+3. выполнить typecheck;
+4. выполнить lint;
+5. выполнить tests;
+6. исправить ошибки;
+7. проверить Docker build, если применимо;
+8. только потом переходить дальше.
+
+Нельзя удалять уже реализованные функции ради новых.
+
+==================================================
+63. ГЛАВНАЯ ЦЕЛЬ
+==================================================
+
+В результате должна получиться полноценная production-ready Telegram management platform для VDS:
+
+VDS
+↓
+Web Panel
+↓
+Backend API
+↓
+Redis / BullMQ
+↓
+Telegram Workers
+↓
+Telegram Accounts
+↓
+Individual Proxy
+
+Функционально администратор должен иметь возможность:
+
+1. добавить proxy;
+2. протестировать proxy;
+3. добавить Telegram account;
+4. выбрать proxy;
+5. импортировать собственную TData или авторизоваться;
+6. запустить account;
+7. видеть статус;
+8. открыть chats;
+9. читать разрешённые переписки;
+10. отправлять сообщения;
+11. создавать account groups;
+12. создавать proxy groups;
+13. загружать Excel/CSV с разрешёнными пользователями;
+14. создать Invitation Task;
+15. выбрать target chat;
+16. выбрать accounts;
+17. увидеть распределение;
+18. запустить задачу;
+19. видеть progress;
+20. видеть статистику каждого аккаунта;
+21. видеть FloodWait и другие Telegram errors;
+22. видеть все logs;
+23. управлять workers;
+24. управлять системой через современную админ-панель.
+
+Проект должен быть рассчитан на реальный VDS и production-развёртывание, а не на демонстрационный прототип.

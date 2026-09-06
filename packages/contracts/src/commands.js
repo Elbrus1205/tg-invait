@@ -1,0 +1,12 @@
+export const workerCommandTypes = [
+    "CONNECT_ACCOUNT",
+    "DISCONNECT_ACCOUNT",
+    "SEND_MESSAGE",
+    "LOAD_DIALOGS",
+    "LOAD_MESSAGES",
+    "CHANGE_PROXY",
+    "IMPORT_TDATA",
+    "PROCESS_TASK",
+    "PROCESS_INVITATION_ITEM",
+    "HEALTH_CHECK"
+];
