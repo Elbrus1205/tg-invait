@@ -42,6 +42,10 @@ export default function DashboardPage() {
             Посмотреть границы этапа
             <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
           </Link>
+          <div className="flex gap-3 text-sm">
+            <Link href="/auth/login" className="text-slate-300 hover:text-white">Войти</Link>
+            <Link href="/auth/register" className="text-emerald-300 hover:text-emerald-200">Регистрация</Link>
+          </div>
         </div>
       </section>
 
