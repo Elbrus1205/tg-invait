@@ -43,14 +43,14 @@ export default function TDataImportPage() {
       <div>
         <p className="eyebrow">Telegram accounts / TData</p>
         <h1 className="mt-2 text-3xl font-semibold text-white">Импорт собственного TData</h1>
-        <p className="mt-3 text-sm leading-6 text-slate-400">Архив отправляется в backend по HTTPS, шифруется перед очередью и не сохраняется в браузере после отправки.</p>
+        <p className="mt-3 text-sm leading-6 text-slate-400">Архив отправляется в backend по HTTPS и шифруется перед очередью. Worker принимает только валидный экспорт Telegram Desktop TData с подключённым production-конвертером.</p>
       </div>
       <form onSubmit={submit} className="surface-card space-y-5 p-6">
         <label className="block text-sm text-slate-300">
           ZIP-архив
           <input type="file" accept=".zip,application/zip" onChange={(event) => setFile(event.target.files?.[0] ?? null)} className="mt-2 block w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-slate-300 file:mr-3 file:rounded file:border-0 file:bg-emerald-300 file:px-3 file:py-2 file:font-semibold file:text-slate-950" />
         </label>
-        <p className="text-xs text-slate-500">Лимит: 25 MiB. Импортируйте только аккаунты, которыми вы владеете или управляете по разрешению.</p>
+        <p className="text-xs text-slate-500">Лимит: 25 MiB. После отправки проверьте статус worker и список аккаунтов. Если конвертер TData не настроен, задача завершится с понятной ошибкой — аккаунт не будет создан из неподдерживаемого архива.</p>
         <button type="submit" disabled={!file || busy} className="min-h-11 rounded-lg bg-emerald-300 px-4 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-50">{busy ? "Отправка…" : "Поставить в очередь"}</button>
         {status ? <p role="status" className="text-sm text-slate-300">{status}</p> : null}
       </form>

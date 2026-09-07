@@ -13,6 +13,8 @@ export interface ApiClientOptions {
 export interface ApiClient {
   get<T>(path: string, init?: RequestInit): Promise<T>;
   post<T>(path: string, body: unknown, init?: RequestInit): Promise<T>;
+  patch<T>(path: string, body: unknown, init?: RequestInit): Promise<T>;
+  delete<T = void>(path: string, init?: RequestInit): Promise<T>;
 }
 
 /**
@@ -63,6 +65,20 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         throw new Error(`API request failed with status ${response.status}`);
       }
       return (await response.json()) as T;
+    },
+    async patch<T>(path: string, body: unknown, init?: RequestInit) {
+      if (!baseUrl) throw new ApiClientNotConfiguredError();
+      const token = typeof window === "undefined" ? undefined : window.localStorage.getItem("invait.accessToken");
+      const response = await fetcher(new URL(path, baseUrl), { ...init, method: "PATCH", headers: { Accept: "application/json", "Content-Type": "application/json", ...(token ? { Authorization: "Bearer " + token } : {}), ...init?.headers }, body: JSON.stringify(body) });
+      if (!response.ok) throw new Error("API request failed with status " + response.status);
+      return (response.status === 204 ? undefined : await response.json()) as T;
+    },
+    async delete<T = void>(path: string, init?: RequestInit) {
+      if (!baseUrl) throw new ApiClientNotConfiguredError();
+      const token = typeof window === "undefined" ? undefined : window.localStorage.getItem("invait.accessToken");
+      const response = await fetcher(new URL(path, baseUrl), { ...init, method: "DELETE", headers: { Accept: "application/json", ...(token ? { Authorization: "Bearer " + token } : {}), ...init?.headers } });
+      if (!response.ok) throw new Error("API request failed with status " + response.status);
+      return (response.status === 204 ? undefined : await response.json()) as T;
     },
   };
 }

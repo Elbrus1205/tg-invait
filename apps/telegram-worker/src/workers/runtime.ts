@@ -11,6 +11,7 @@ import { createMessageHandlers } from "./messages.js";
 import { createContactHandlers } from "./contacts.js";
 import { createInvitationHandlers, createPrismaInvitationHandlers } from "./invitations.js";
 import { createTaskHandlers } from "./tasks.js";
+import { createTDataImportHandler } from "./tdata.js";
 import { HeartbeatLoop } from "./heartbeat-loop.js";
 import type {
   TelegramWorkerOptions,
@@ -103,7 +104,8 @@ export class TelegramWorker {
               gateway: options.telegramGateway,
               lock: options.accountLock,
               ...(options.accountLockTtlMs === undefined ? {} : { lockTtlMs: options.accountLockTtlMs })
-            }))
+            })),
+            IMPORT_TDATA: createTDataImportHandler({})
           }
         : options.taskState && options.taskExecutor
           ? createTaskHandlers({ state: options.taskState, executor: options.taskExecutor })
