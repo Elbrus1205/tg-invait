@@ -1,4 +1,4 @@
-efootball-nexon.ru {
+efootballnexon.online {
   encode gzip
   handle /api/* {
     reverse_proxy backend:4000

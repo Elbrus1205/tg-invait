@@ -17,7 +17,7 @@ docker compose -f docker-compose.production.yml build
 docker compose -f docker-compose.production.yml up -d
 ```
 
-The DNS A record for `efootball-nexon.ru` must point to `72.56.100.153`. Caddy obtains and renews HTTPS certificates automatically when ports 80 and 443 are reachable.
+The DNS A record for `efootballnexon.online` must point to `193.37.70.66`. Caddy obtains and renews HTTPS certificates automatically when ports 80 and 443 are reachable.
 
 ## Updates
 

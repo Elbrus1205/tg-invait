@@ -26,7 +26,7 @@ services:
       context: .
       dockerfile: Dockerfile.frontend
       args:
-        NEXT_PUBLIC_API_URL: https://efootball-nexon.ru
+        NEXT_PUBLIC_API_URL: https://efootballnexon.online
     env_file: .env.production
     restart: unless-stopped
     expose:
